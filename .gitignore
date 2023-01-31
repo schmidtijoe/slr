@@ -1,0 +1,8 @@
+# jetbrains specific
+/.idea/
+
+# pythion specific
+**/__pycache__/
+
+# notebook dev
+/jupy/
