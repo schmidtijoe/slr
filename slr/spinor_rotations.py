@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
 
 def rotation_relaxation_analytic(ux, uy, uz, mx, my, mz, me, phi, t1_sec, t2_sec, dt_sec):
@@ -48,26 +47,27 @@ def spinor_rotation(phi, nx, ny, nz, m_p, m_m, mz, me):
         ])
 
 
-# Create magnetization vector
-m_init = np.array([0, 0, 1, 1])
+if __name__ == '__main__':
+    # Create magnetization vector
+    m_init = np.array([0, 0, 1, 1])
 
-m_exc_mag = rotation_relaxation_analytic(0, 1, 0, *m_init, np.pi / 50, 1.5, 1, 5*1e-6)
+    m_exc_mag = rotation_relaxation_analytic(0, 1, 0, *m_init, np.pi / 50, 1.5, 1, 5*1e-6)
 
-m_exc_spinor = spinor_rotation(np.pi/50, 0, 1, 0, *m_init)
-m_exc_spinor = np.array([np.real(m_exc_spinor[0] + m_exc_spinor[1]) / 2, np.imag(m_exc_spinor[0] - m_exc_spinor[1]) / 2,
-                         m_exc_spinor[2], m_exc_spinor[3]], dtype=float)
+    m_exc_spinor = spinor_rotation(np.pi/50, 0, 1, 0, *m_init)
+    m_exc_spinor = np.array([np.real(m_exc_spinor[0] + m_exc_spinor[1]) / 2, np.imag(m_exc_spinor[0] - m_exc_spinor[1]) / 2,
+                             m_exc_spinor[2], m_exc_spinor[3]], dtype=float)
 
-origin = np.array([0, 0, 0])
+    origin = np.array([0, 0, 0])
 
-fig = plt.figure(figsize=(10, 7), dpi=200)
-ax = fig.add_subplot(111, projection='3d')
-ax.set_xlim(-1.1, 1.1)
-ax.set_ylim(-1.1, 1.1)
-ax.set_zlim(-0.1, 1.1)
-ax.quiver(*origin, *m_exc_mag[:-1], color='#32a852', label='magnetization domain computation')
-ax.quiver(*origin, *m_exc_spinor[:-1], color='#b02d10', label='spin domain computation')
-plt.legend()
-plt.show()
+    fig = plt.figure(figsize=(10, 7), dpi=200)
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_xlim(-1.1, 1.1)
+    ax.set_ylim(-1.1, 1.1)
+    ax.set_zlim(-0.1, 1.1)
+    ax.quiver(*origin, *m_exc_mag[:-1], color='#32a852', label='magnetization domain computation')
+    ax.quiver(*origin, *m_exc_spinor[:-1], color='#b02d10', label='spin domain computation')
+    plt.legend()
+    plt.show()
 
 
 
