@@ -1,9 +1,11 @@
+import logging
+
 from slr import options
+from rf_pulse_files import rfpf
 import numpy as np
 from scipy import signal
 import matplotlib.pyplot as plt
 import pathlib as plb
-import json
 
 
 class SLR:
@@ -14,20 +16,23 @@ class SLR:
         # set effective ripple sizes
         self.sigma_1, self.sigma_2 = self._effective_ripples()
 
-        # Set some vars
-        self.pulse_duration_us: float = self.config.pulse.pulseDuration_in_us
+        # Set vars in rfpf object
         # bandwidth of pulse in Hz
         # sli_ds [m] * gz[T/m] * gamma [Hz/T] -> Hz
-        self.bw_pulse = self.config.pulse.sliceThickness * self.config.globals.maxGrad * self.config.globals.gammaHz
-        # time bandwidth prod
-        self.tb = self.bw_pulse * self.config.pulse.pulseDuration
+        bandwidth = slr_config.pulse.sliceThickness * slr_config.globals.maxGrad * slr_config.globals.gammaHz
+        self.pulse: rfpf.RF = rfpf.RF(
+            duration_in_us=int(slr_config.pulse.pulseDuration_in_us),
+            bandwidth_in_Hz=bandwidth,
+            time_bandwidth=bandwidth * slr_config.pulse.pulseDuration,
+            num_samples=slr_config.pulse.pulseNumSamples
+        )
+
         # time steps of pulse
         self.dt_pulse: float = self.config.pulse.pulseDuration / self.config.pulse.pulseNumSamples
 
         self.a_n_z: np.ndarray = np.zeros(0, dtype=complex)
         self.b_n_z: np.ndarray = np.zeros(0, dtype=complex)
         self.id_b_n_z: np.ndarray = np.zeros(0, dtype=complex)
-        self.pulse: np.ndarray = np.zeros(self.config.pulse.pulseNumSamples, dtype=complex)
 
     def _effective_ripples(self) -> (float, float):
         """
@@ -121,7 +126,11 @@ class SLR:
             b_k = b_k_m1[:-1]
         return b1[::-1]
 
-    def plot(self, freqs, plot_save: bool = False):
+    def plot(self, plot_save: str = None):
+        oversampling = 8
+        freqs = np.fft.fftshift(np.fft.fftfreq(oversampling * 2 * self.config.pulse.pulseNumSamples))
+        freqs *= self.config.pulse.pulseNumSamples / (
+                self.config.globals.gammaHz * self.config.globals.maxGrad * self.config.pulse.pulseDuration)
         # plot
         fig = plt.figure(figsize=(10, 7), dpi=200)
         ax = fig.add_subplot(311)
@@ -145,32 +154,32 @@ class SLR:
 
         ax = fig.add_subplot(313)
         ax.set_title(f'pulse')
-        ax.plot(np.arange(self.config.pulse.pulseNumSamples), np.real(self.pulse), label='real', color='#1b8185')
-        ax.plot(np.arange(self.config.pulse.pulseNumSamples), np.imag(self.pulse), label='imag')
+        ax.plot(np.arange(self.config.pulse.pulseNumSamples), np.real(self.pulse.amplitude),
+                label='real', color='#1b8185')
+        ax.plot(np.arange(self.config.pulse.pulseNumSamples), np.imag(self.pulse.phase), label='imag')
         ax.legend()
         plt.tight_layout()
         if plot_save:
-            plt.savefig('slr_pi_half_' + str(self.config.pulse.phase) + '.png', bbox_inches='tight', dpi=200)
+            plt.savefig(plot_save, bbox_inches='tight', dpi=200)
+            plt.close(fig)
         else:
             plt.show()
 
     def build(self):
         """
-
-        :param plot:
         :return:
         """
         # compute fractional width
         if self.config.pulse.phase == "minimum:":
-            w = self._d_minimum_phase() / self.tb
+            w = self._d_minimum_phase() / self.pulse.time_bandwidth
         else:
-            w = self._d_infinity(self.sigma_1, self.sigma_2) / self.tb
+            w = self._d_infinity(self.sigma_1, self.sigma_2) / self.pulse.time_bandwidth
 
         # compute transition band in frequency
-        bw = self.bw_pulse * w
+        bw = self.pulse.bandwidth_in_Hz * w
         # pass - and stop band edges
-        f_p = (self.bw_pulse - bw) / 2
-        f_s = (self.bw_pulse + bw) / 2
+        f_p = (self.pulse.bandwidth_in_Hz - bw) / 2
+        f_s = (self.pulse.bandwidth_in_Hz + bw) / 2
 
         # number of samples of pulse, sampling frequency
         freq_sampling = 1 / self.dt_pulse
@@ -179,13 +188,13 @@ class SLR:
         # for minimum phase see SLR paper
         # polynomial evaluated at unit circle (aka dft)
         oversampling = 8
-        id_b_amplitude = np.sin(self.config.pulse.angle)
+        id_b_amplitude = np.sin(self.config.pulse.fa)
         bands_freq = [0, f_p, f_s, 0.5 * freq_sampling]
         bands_gain = [id_b_amplitude, id_b_amplitude, 0, 0]
         bands_weight = [1 / self.sigma_1, 1 / self.sigma_2]
 
-        # minimum phase version of bn
         if self.config.pulse.phase == 'minimum':
+            # minimum phase version of bn
             b_n_co = signal.firls(2 * self.config.pulse.pulseNumSamples - 1, bands_freq, bands_gain,
                                   weight=bands_weight, fs=freq_sampling)
             b_n_co = signal.minimum_phase(b_n_co)
@@ -224,42 +233,29 @@ class SLR:
         self.b_n_z = b_n_z
 
         # Inverse SLR, recover b1
-        self.pulse = self._pauly_ab2rf(a_n_co, b_n_co, self.config.pulse.pulseNumSamples)
+        pulse = self._pauly_ab2rf(a_n_co, b_n_co, self.config.pulse.pulseNumSamples)
+        if np.max(np.imag(pulse)) > self.config.globals.eps:
+            self.pulse.phase = np.imag(pulse)
+        self.pulse.amplitude = np.real(pulse)
 
         if self.config.f_config.visualize:
-            self.plot(freqs=freqs)
+            self.plot()
 
-    def save_rf(self, filename: str = None, phase: np.ndarray = None):
+    def save_rf(self, filename: str = None):
         # if filename not given explicitly, override
         if filename is None:
             filename = plb.Path(self.config.f_config.outputPulseFile).absolute()
         else:
             filename = plb.Path(filename).absolute()
-        # pulse calculated along y axis, needs -pi/2 phase for x
-        with open(filename, 'w') as txtfile:
-            for k_index in range(self.pulse.shape[0]):
-                txtfile.write('{:e}'.format(self.pulse[k_index]))
-                txtfile.write('\t')
-                if phase:
-                    if phase.shape[0] != self.pulse.shape[0]:
-                        print('phase and amplitude dont match')
-                        exit(-1)
-                    else:
-                        txtfile.write('{:e}'.format(phase[k_index] - np.pi / 2))
-                else:
-                    txtfile.write('{:e}'.format(-np.pi / 2))
-                txtfile.write('\n')
+        # check existing
+        if filename.suffixes:
+            filename.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            filename.mkdir(parents=True, exist_ok=True)
+        if filename.is_file():
+            filename.unlink()
+        logging.info(f"writing to file: {filename}")
+        if filename.suffix != ".pkl":
+            logging.info(f"saving as .pkl (change suffix from {filename.suffix}")
 
-        filename = filename.with_name(f"{filename.stem}_specs").with_suffix(".json")
-        j_dict = self._get_pulse_specs()
-        with open(filename, "w") as j_file:
-            j_file.write(json.dumps(j_dict, indent=2))
-
-    def _get_pulse_specs(self) -> dict:
-        d = {
-            "bandwidth": self.bw_pulse,
-            "time-bandwidth": self.tb,
-            "@duration_us": self.pulse_duration_us
-        }
-        return d
-
+        self.pulse.save(filename.with_suffix(".pkl"))

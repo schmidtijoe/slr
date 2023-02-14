@@ -48,7 +48,7 @@ class PulseSpecs(helpers.Serializable):
     def __post_init__(self):
         self.sliceThickness: float = 1e-3 * self.sliceThickness_in_mm
         self.pulseDuration: float = 1e-6 * self.pulseDuration_in_us
-        self.fa: float = self.angle / 180 * np.pi
+        self.fa: float = np.radians(self.angle)
 
 
 @dataclass
@@ -61,12 +61,16 @@ class SlrConfiguration:
         j_dict = {
             "config": self.f_config.to_dict(),
             "globals": self.globals.to_dict(),
-            "pulse": self.pulse.to_dict()
+            "pulse": self.pulse.to_dict(),
         }
         j_path = Path(j_path).absolute()
+        # check existing
+        if j_path.suffixes:
+            j_path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            j_path.mkdir(parents=True, exist_ok=True)
         if j_path.is_file():
-            j_path = j_path.parent
-        utils.create_folder_ifn_exist(j_path)
+            j_path.unlink()
         with open(j_path, "w") as j_file:
             j_file.write(json.dumps(j_dict, indent=2))
 
@@ -83,6 +87,9 @@ class SlrConfiguration:
         else:
             raise ValueError("Could not find JSON configuration file")
         return slr_conf
+
+    def load_pulse(self, path):
+        self.pulse.load(path)
 
     @classmethod
     def from_cmd_line_args(cls, args: ArgumentParser.parse_args) -> dataclass:
