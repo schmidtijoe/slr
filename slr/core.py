@@ -17,9 +17,13 @@ class SLR:
         self.sigma_1, self.sigma_2 = self._effective_ripples()
 
         # Set vars in rfpf object
+        # check max grad
+        if slr_config.globals.maxGrad < slr_config.pulse.desiredGradient_in_mT * 1e-3:
+            err = f"desired gradient ({slr_config.pulse.desiredGradient_in_mT:.2f} mT/m)" \
+                  f" exceeds max gradient amplitude of system ({slr_config.globals.maxGrad * 1e3:.2f} mT/m"
         # bandwidth of pulse in Hz
         # sli_ds [m] * gz[T/m] * gamma [Hz/T] -> Hz
-        bandwidth = slr_config.pulse.sliceThickness * slr_config.globals.maxGrad * slr_config.globals.gammaHz
+        bandwidth = slr_config.pulse.sliceThickness * slr_config.pulse.desiredGradient_in_mT * 1e-3 * slr_config.globals.gammaHz
         self.pulse: rfpf.RF = rfpf.RF(
             duration_in_us=int(slr_config.pulse.pulseDuration_in_us),
             bandwidth_in_Hz=bandwidth,

@@ -37,6 +37,7 @@ class GlobalSpecs(helpers.Serializable):
 @dataclass
 class PulseSpecs(helpers.Serializable):
     sliceThickness_in_mm: float = 0.5     # [mm]
+    desiredGradient_in_mT: float = 20.0     # [mT/m]
     pulseNumSamples: int = 850           # number of pulse samples
     pulseDuration_in_us: float = 1700   # [us]
     phase: str = choice("linear", "minimum", default="linear")
@@ -48,7 +49,7 @@ class PulseSpecs(helpers.Serializable):
     def __post_init__(self):
         self.sliceThickness: float = 1e-3 * self.sliceThickness_in_mm
         self.pulseDuration: float = 1e-6 * self.pulseDuration_in_us
-        self.fa: float = np.radians(self.angle)
+        self.fa: float = self.angle / 180.0 * np.pi
 
 
 @dataclass
