@@ -31,9 +31,6 @@ class SLR:
             num_samples=slr_config.pulse.pulseNumSamples
         )
 
-        # time steps of pulse
-        self.dt_pulse: float = self.config.pulse.pulseDuration / self.config.pulse.pulseNumSamples
-
         self.a_n_z: np.ndarray = np.zeros(0, dtype=complex)
         self.b_n_z: np.ndarray = np.zeros(0, dtype=complex)
         self.id_b_n_z: np.ndarray = np.zeros(0, dtype=complex)
@@ -186,7 +183,7 @@ class SLR:
         f_s = (self.pulse.bandwidth_in_Hz + bw) / 2
 
         # number of samples of pulse, sampling frequency
-        freq_sampling = 1 / self.dt_pulse
+        freq_sampling = 1 / self.pulse.get_dt_sampling_in_s()
 
         # firls finite response filter function scipy
         # for minimum phase see SLR paper
